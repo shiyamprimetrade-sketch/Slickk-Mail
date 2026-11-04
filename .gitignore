@@ -14,3 +14,11 @@ logs/
 .vscode/settings.json
 __pycache__/
 .pytest_cache/
+
+# Experimental mailboxes and queue databases
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+.local/
