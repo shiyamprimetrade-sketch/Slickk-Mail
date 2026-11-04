@@ -1,0 +1,29 @@
+name: SLICKK Mesh Mail experimental tests
+on:
+  push:
+    paths:
+      - 'experiments/meshmail/**'
+      - '.github/workflows/meshmail-lab.yml'
+  pull_request:
+    paths:
+      - 'experiments/meshmail/**'
+      - '.github/workflows/meshmail-lab.yml'
+jobs:
+  meshmail:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ['3.12', '3.13']
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Run local socket and database tests
+        run: python -m unittest discover -s experiments/meshmail -p "test_*.py" -v
+      - name: Verify compression experiment
+        run: python experiments/meshmail/capacity_experiment.py
