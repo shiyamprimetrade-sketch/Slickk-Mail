@@ -34,6 +34,8 @@ Can we control our own *identity layer*, *mail protocol*, *message storage*, *de
 
 **Phase F — capacity experiments:** Add compression and deduplication, measure real bytes written/read and end-to-end latency, vary content entropy, validate recovery after disk-full or power loss. Target measurable efficiency gains rather than claiming a 16 GB device can have arbitrary capacity.
 
+Initial verified capacity experiment: one MiB of repetitive `A` bytes compressed to 1,040 bytes using zlib (99.90% reduction); 1 MiB of random bytes compressed to 1,048,902 bytes (0.03% overhead). Both decompressed losslessly. This is reproducible using `experiments/meshmail/capacity_experiment.py`.
+
 ## Control and safety
 
 - Keep current `slickk.online` and `cloud.slickk.online` intact.
