@@ -1,5 +1,9 @@
 """End-to-end localhost tests for SLICKK Mesh Mail without network providers."""
 import http.client
+import hashlib
+import hmac
+import json
+import time
 from http.server import ThreadingHTTPServer
 import os
 from pathlib import Path
@@ -48,6 +52,19 @@ class LocalMeshTests(unittest.TestCase):
         self.assertEqual(inbox[0]['sender'],'alice@alpha.local')
         self.assertEqual(self.a.messages('charlie','inbox','subject')[0]['body'],'Hello, Charlie')
         self.assertEqual(len(self.a.messages('alice','sent')),1)
+
+    def test_replay_signature_rejected(self):
+        from uuid import uuid4
+        mid = str(uuid4())
+        mail = {'id': mid, 'from': 'alice@alpha.local', 'to': 'bob@beta.local',
+                'subject': 'Replay test', 'body': 'Delivered once', 'sent_at': int(time.time())}
+        payload = json.dumps(mail).encode()
+        stamp, nonce = str(int(time.time())), 'a'*32
+        signature = hmac.new(KEY, f'{stamp}.{nonce}.'.encode()+payload, hashlib.sha256).hexdigest()
+        self.assertEqual(self.b.receive(payload, stamp, nonce, signature),mid)
+        with self.assertRaisesRegex(PermissionError,'replayed'):
+            self.b.receive(payload, stamp, nonce, signature)
+        self.assertEqual(len(self.b.messages('bob')),1)
 
     def test_unknown_route_rejected(self):
         with self.assertRaisesRegex(ValueError,'trusted route'):
