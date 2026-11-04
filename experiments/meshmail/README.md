@@ -19,6 +19,10 @@ The script starts two distinct HTTP servers, prints temporary login details **lo
 
 Sign in using the printed passwords. Send a message to `bob@beta.local`, open Bob's inbox in another browser window, and reply to `alice@alpha.local`. Data is wiped when the demo exits. Nothing modifies DNS, email MX, Windows networking or existing SLICKK websites.
 
+## Capacity measurements
+
+`py -3 capacity_experiment.py` compares lossless compression of one MiB of repetitive text with one MiB of random data. It proves compression can save enormous space for some content but cannot generate unlimited physical capacity. No disks or partitions are changed.
+
 ## Automated tests
 
 ```powershell
