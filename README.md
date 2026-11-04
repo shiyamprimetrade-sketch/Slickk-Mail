@@ -83,3 +83,7 @@ Never use `docker compose down -v` on a system with mailboxes: it removes persis
 - https://docs.docker.com/desktop/setup/install/windows-install/
 - https://docs.docker.com/desktop/features/wsl/
 - https://developers.cloudflare.com/dns/troubleshooting/email-issues/
+
+## Independent-network invention track (experimental)
+
+See [`experiments/meshmail/README.md`](experiments/meshmail/README.md) and [`docs/NETWORK-INVENTION.md`](docs/NETWORK-INVENTION.md). A Python-standard-library prototype lets two SLICKK mailbox nodes authenticate, send, receive, queue and retry messages using a self-defined local protocol. Run `py -3 experiments/meshmail/demo.py` on Windows, then run `py -3 -m unittest discover -s experiments/meshmail -p "test_*.py" -v`. This **does not** provide internet-wide SMTP routing or expose a public IP. It is a separate laboratory from the Stalwart production stack.
