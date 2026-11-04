@@ -1,0 +1,16 @@
+# Never commit credentials, mailbox data, credentials in terminal captures, or backups.
+.env
+.env.*
+!.env.example
+*.token
+*.key
+*.pem
+*.pfx
+*.p12
+credentials*
+backups/*
+!backups/.gitkeep
+logs/
+.vscode/settings.json
+__pycache__/
+.pytest_cache/

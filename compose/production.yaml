@@ -1,0 +1,45 @@
+# PRODUCTION LINUX VPS ONLY. Not for a 16 GB USB or Windows host.
+# Before deploying: confirm public IP, port 25 BOTH directions, PTR, DNS zone ownership,
+# cert automation, existing MX backups, provider policies, firewall, and offsite backups.
+name: slickk-mail-prod
+services:
+  stalwart:
+    image: stalwartlabs/stalwart:v1.0
+    container_name: slickk-mail-prod-stalwart
+    init: true
+    restart: unless-stopped
+    ports:
+      - "25:25"          # External SMTP: DNS-only mail host, never Cloudflare proxied
+      - "465:465"        # TLS client submission
+      - "993:993"        # IMAP TLS
+      - "995:995"        # POP3 TLS (disable in Stalwart if not wanted)
+      - "4190:4190"      # ManageSieve; firewall restrict if unnecessary
+      - "443:443"        # HTTPS for admin and JMAP (valid TLS required)
+      - "127.0.0.1:8080:8080" # bootstrap-only admin loopback
+    volumes:
+      - stalwart-etc:/etc/stalwart
+      - stalwart-data:/var/lib/stalwart
+    security_opt:
+      - no-new-privileges:true
+
+  bulwark:
+    image: ghcr.io/bulwarkmail/webmail:1.19.1
+    container_name: slickk-mail-prod-webmail
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000" # Publish only after authenticated setup, through HTTPS reverse proxy/tunnel
+    environment:
+      HOSTNAME: "0.0.0.0"
+      PORT: "3000"
+      APP_NAME: "SLICKK Mail"
+      # JMAP_SERVER_URL intentionally omitted until first-run wizard configured.
+    volumes:
+      - bulwark-data:/app/data
+    depends_on:
+      - stalwart
+    security_opt:
+      - no-new-privileges:true
+volumes:
+  stalwart-etc:
+  stalwart-data:
+  bulwark-data:
