@@ -19,10 +19,6 @@ The script starts two distinct HTTP servers, prints temporary login details **lo
 
 Sign in using the printed passwords. Send a message to `bob@beta.local`, open Bob's inbox in another browser window, and reply to `alice@alpha.local`. Data is wiped when the demo exits. Nothing modifies DNS, email MX, Windows networking or existing SLICKK websites.
 
-## Capacity measurements
-
-`py -3 capacity_experiment.py` compares lossless compression of one MiB of repetitive text with one MiB of random data. It proves compression can save enormous space for some content but cannot generate unlimited physical capacity. No disks or partitions are changed.
-
 ## Automated tests
 
 ```powershell
@@ -67,3 +63,49 @@ A private password is entered interactively. Local persistent databases should b
 **Unproven:** Global address discovery, NAT traversal, security across untrusted networks, independent global interoperability, physical storage beyond actual media capacity, deliverability and production reliability.
 
 `docs/NETWORK-INVENTION.md` contains the engineering roadmap and boundaries. Build from verified behavior, not from untested assumptions.
+
+## WordMind: keyboard-first discovery (Session 02 invention)
+
+The experimental mailbox now includes **WordMind**, an explainable, per-account
+word-relationship engine. It builds on the mentor's teaching:
+
+1. Each letter counts as 1: `ABCA` has 4 letters.
+2. The count becomes a word: `4 → FOUR`.
+3. Apply the rule again: `FOUR → 4 → FOUR`; `APPLE → FIVE → FOUR`.
+4. Distinct words are related when they have the same letter count, the same
+   letters in another order, or appear near each other in actual messages.
+5. Every account can mark a relationship useful/not useful. That feedback changes
+   the account's ranking for future discoveries.
+
+### Try it in the browser
+
+After launching `demo.py`, sign in to Alice's and Bob's webmail. Send from Alice
+to `bob@beta.local` with subject `ABCA CABA`, and a body such as
+`APPLE links to FIVE; FOUR is another way to describe the length`.
+
+At Bob's mailbox, click **WordMind** → search for `ABCA`, `APPLE`, or `FOUR`.
+WordMind shows the transformation chain, observed related words, which messages
+contained the token, and buttons to teach the ranking with explicit feedback.
+
+### What WordMind has and has not learned
+
+- **Implemented:** symbolic transformations, exact word occurrence, anagram
+  recognition, co-occurrence weights, per-user feedback, and a durable private
+  SQLite graph derived from messages; newly received messages are indexed once.
+- **Not implemented:** true general intelligence, independent invention of
+  novel semantics, end-to-end encryption, autonomous network creation, public
+  email delivery, or mathematical compression of arbitrary random content.
+- **Privacy:** Discovery queries use the authenticated mailbox owner only.
+  Message body content is **not** sent to external AI APIs.
+- **Storage:** Complete messages remain stored unchanged. The word index uses
+  additional finite disk space; the rule does not create limitless storage.
+- **Scope:** This is a controlled loopback research prototype, not secure
+  internet-facing email software.
+
+Run all tests:
+
+```powershell
+py -3 -m unittest discover -s experiments/meshmail -p 'test_*.py' -v
+```
+
+Architecture, learning measurements, and test boundaries are in `docs/WORDMIND.md`.
