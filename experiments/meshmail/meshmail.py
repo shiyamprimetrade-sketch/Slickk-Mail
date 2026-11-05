@@ -21,7 +21,8 @@ import secrets
 import sqlite3
 import threading
 import time
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, quote, urlsplit
+from wordmind import WordMind
 from urllib.request import Request, urlopen
 from uuid import uuid4
 
@@ -93,10 +94,12 @@ def normalize_address(address):
 
 
 def store_mail(conn, owner, folder, mail):
-    conn.execute("""INSERT OR IGNORE INTO messages
+    mailbox_id = str(uuid4())
+    saved = conn.execute("""INSERT OR IGNORE INTO messages
       (id,global_id,owner,folder,sender,recipient,subject,body,created)
-      VALUES(?,?,?,?,?,?,?,?,?)""", (str(uuid4()), mail["id"], owner, folder,
+      VALUES(?,?,?,?,?,?,?,?,?)""", (mailbox_id, mail["id"], owner, folder,
             mail["from"], mail["to"], mail["subject"], mail["body"], mail["sent_at"]))
+    return mailbox_id if saved.rowcount else None
 
 
 class Node:
@@ -108,6 +111,9 @@ class Node:
         self.lock = threading.RLock()
         self.sessions = {}  # volatile; logout on restart is intentional
         self.conn = connect(db_path)
+        self.mind = WordMind(self.conn)
+        with self.lock:
+            self.mind.reindex_legacy()
 
     def close(self):
         self.conn.close()
@@ -127,13 +133,17 @@ class Node:
             if domain == self.name:
                 if not self.conn.execute("SELECT 1 FROM users WHERE name=?", (user,)).fetchone():
                     raise ValueError("recipient not found")
-                store_mail(self.conn, user, "inbox", mail)
+                mid = store_mail(self.conn, user, "inbox", mail)
+                if mid:
+                    self.mind.index_mail(user, mid, subject, body)
             elif domain not in self.peers:
                 raise ValueError("no trusted route to node")
             else:
                 self.conn.execute("INSERT INTO queued(global_id,payload,domain,created) VALUES(?,?,?,?)",
                                   (mail["id"], json.dumps(mail), domain, now()))
-            store_mail(self.conn, sender, "sent", mail)
+            mid = store_mail(self.conn, sender, "sent", mail)
+            if mid:
+                self.mind.index_mail(sender, mid, subject, body)
         if domain != self.name:
             self.retry()
         return mail["id"]
@@ -170,7 +180,9 @@ class Node:
                 raise PermissionError("replayed request") from exc
             if not self.conn.execute("SELECT 1 FROM users WHERE name=?", (name,)).fetchone():
                 raise ValueError("recipient not found")
-            store_mail(self.conn, name, "inbox", mail)
+            mid = store_mail(self.conn, name, "inbox", mail)
+            if mid:
+                self.mind.index_mail(name, mid, mail["subject"], mail["body"])
         return mail["id"]
 
     def retry(self):
@@ -264,6 +276,42 @@ def handler_factory(node):
                 return
             username, _, csrf=sess
             args=parse_qs(parts.query)
+            if parts.path == "/discover":
+                value=args.get("word",[""])[0][:100]
+                t="<p><a href='/'>← Back to mailbox</a></p><h2>WordMind: discover relationships</h2>"
+                t+=("<p>Every letter counts as one. This system discovers similarities from "
+                    "the words actually observed in <em>your</em> mailbox, and learns from your feedback. "
+                    "It does not claim to understand meaning or generate extra physical memory.</p>")
+                t+="<form method='get' action='/discover'><input name='word' placeholder='One word, e.g. ABCA' maxlength=32 required><button>Discover</button></form>"
+                if value:
+                    try:
+                        with node.lock: evidence=node.mind.discover(username,value)
+                    except ValueError as exc:
+                        self.reply(400,self.page(t+"<p>"+escape(str(exc))+"</p>"));return
+                    t+="<section><h3>"+escape(evidence['word'].upper())+"</h3>"
+                    t+="<p>"+" + ".join("1" for _ in evidence['letters'])+" = "+str(evidence['length'])
+                    t+=" → <strong>"+escape(evidence['number_word'])+"</strong> → "
+                    t+=str(sum(1 for ch in evidence['number_word'] if ch.isalpha()))+" letters in the number-word.</p>"
+                    t+="<p>Transformation chain: "+escape(" → ".join(evidence['chain']))+"</p>"
+                    t+="<p>Observed connections (strongest first):</p>"
+                    if not evidence['related']:t+="<p>No relationships learned yet. Send some messages containing this word and others.</p>"
+                    for item in evidence['related']:
+                        t+="<article><b>"+escape(item['word'])+"</b> — score " + str(round(item['score'],2))
+                        t+="<p>Because: "+escape("; ".join(dict.fromkeys(item['reasons'])))+"</p>"
+                        for preference,label in (("yes","Useful"),("no","Not useful")):
+                            t+="<form method='post' action='/feedback' style='display:inline-block;margin-right:8px'>"
+                            t+="<input type='hidden' name='csrf' value='"+csrf+"'>"
+                            t+="<input type='hidden' name='word' value='"+escape(evidence['word'],quote=True)+"'>"
+                            t+="<input type='hidden' name='related' value='"+escape(item['word'],quote=True)+"'>"
+                            t+="<input type='hidden' name='vote' value='"+preference+"'><button>"+label+"</button></form>"
+                        t+="</article>"
+                    t+="<p>Messages in your mailbox containing this exact word: "+str(len(evidence['messages']))+" (max 20 shown)</p>"
+                    for msg in evidence['messages']:
+                        t+="<p>"+escape(msg['folder'])+": "+escape(msg['subject'])+"</p>"
+                    t+="</section>"
+                self.reply(200,self.page(t,"SLICKK WordMind"));return
+            if parts.path != "/":
+                self.reply(404,"Not found");return
             folder=args.get("folder",["inbox"])[0]
             if folder not in ("inbox","sent"):folder="inbox"
             q=args.get("q",[""])[0][:100]
@@ -271,7 +319,7 @@ def handler_factory(node):
                 rows=node.messages(username,folder,q)
                 pending=node.conn.execute("SELECT COUNT(*) FROM queued").fetchone()[0]
             t="<p>Signed in: <strong>"+escape(username+"@"+node.name)+"</strong></p>"
-            t+="<nav><a href='/?folder=inbox'>Inbox</a> | <a href='/?folder=sent'>Sent</a> | Pending transfers: "+str(pending)+"</nav>"
+            t+="<nav><a href='/?folder=inbox'>Inbox</a> | <a href='/?folder=sent'>Sent</a> | <a href='/discover'>WordMind</a> | Pending transfers: "+str(pending)+"</nav>"
             t+="<form method='get'><input name='q' placeholder='Search' value='"+escape(q,quote=True)+"'><button>Search</button></form>"
             t+="<section><h2>Compose</h2><form method='post' action='/send'><input type='hidden' name='csrf' value='"+csrf+"'>"
             t+="<input name='to' placeholder='recipient@node' required maxlength=160><input name='subject' placeholder='Subject' required maxlength=200>"
@@ -324,6 +372,19 @@ def handler_factory(node):
                 if token:
                     with node.lock:node.sessions.pop(token.value,None)
                 self.reply(303,b"",headers={"Location":"/","Set-Cookie":"sid=; Max-Age=0; Path=/"})
+                return
+            if self.path=="/feedback":
+                source=form.get('word','')
+                target=form.get('related','')
+                vote=form.get('vote','')
+                if vote not in ('yes','no'):
+                    self.reply(400,"Invalid feedback");return
+                try:
+                    with node.lock, node.conn:
+                        node.mind.feedback(sess[0],source,target,vote=='yes')
+                except ValueError as exc:
+                    self.reply(400,self.page("<p>"+escape(str(exc))+"</p>"));return
+                self.reply(303,b"",headers={"Location":"/discover?word="+quote(source)})
                 return
             if self.path=="/send":
                 try:
